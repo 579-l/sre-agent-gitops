@@ -3,6 +3,19 @@ kind: Namespace
 metadata:
   name: ai-services
 ---
+# 新增：PVC持久化存储ollama大模型
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-pvc
+  namespace: ai-services
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi  # qwen2.5:1.5b约1GB，预留10G空间
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,11 +29,32 @@ spec:
     metadata:
       labels: { app: ollama }
     spec:
+      # ==========新增Init容器：Pod启动自动拉取模型==========
+      initContainers:
+      - name: pull-model-init
+        image: ollama/ollama:latest
+        command: ["/bin/sh","-c","ollama pull qwen2.5:1.5b"]
+        env:
+        - name: OLLAMA_HOST
+          value: "0.0.0.0"
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama  # ollama模型数据存放目录
       containers:
       - name: ollama
         image: ollama/ollama:latest
         ports:
         - containerPort: 11434
+        env:
+        - name: OLLAMA_HOST
+          value: "0.0.0.0"
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama # 和init容器挂载同一个存储卷
+      volumes:
+      - name: ollama-data
+        persistentVolumeClaim:
+          claimName: ollama-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -33,3 +67,4 @@ spec:
   ports:
   - port: 11434
     targetPort: 11434
+
